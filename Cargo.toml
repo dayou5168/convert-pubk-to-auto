@@ -1,5 +1,5 @@
 [package]
-name = "add-convert"
+name = "pubkey-to-auto"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,3 +12,9 @@ base58 = "0.2.0"
 blake2 = "0.10.6"
 hex = "0.4.3"
 clap = { version = "4.0", features = ["derive", "cargo"] }
+hyper = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+http-body-util = "0.1"
+hyper-util = { version = "0.1", features = ["full"] }
+tracing-subscriber = { version = "0.3.16", features = ["json"] }
+log = "0.4.21"

@@ -1,46 +1,15 @@
-use base58::{FromBase58, ToBase58};
+use base58::ToBase58;
 use blake2::{Blake2b512, Digest};
-use hex;
-const SS58_MIN_LEN: usize = 35;
-const SS58_MAX_LEN: usize = 36;
 use clap::Parser;
-
-pub fn address_to_key(address: &str) -> Result<(u16, String), String> {
-    let address = address
-        .from_base58()
-        .map_err(|e| format!("Base58 conversion error: {e:?}"))?;
-    let len = address.len();
-    if !(SS58_MIN_LEN..=SS58_MAX_LEN).contains(&len) {
-        Err("SS58 address has wrong length".to_string())
-    } else {
-        // Verify the checksum
-        let checksum = &address[len - 2..len];
-        let mut hasher = Blake2b512::new();
-        hasher.update(b"SS58PRE");
-        hasher.update(&address[0..len - 2]);
-        let checksum_calc = &hasher.finalize()[0..2];
-        if checksum != checksum_calc {
-            return Err(format!(
-                "Invalid checksum: input {checksum:?} is not equal to calculated {checksum_calc:?}"
-            ));
-        }
-
-        // Get the key
-        let key = format!("0x{}", hex::encode(&address[len - 34..len - 2]));
-
-        // Get the network prefix
-        let prefix_buf = &address[0..len - 34];
-        let prefix = if prefix_buf.len() == 1 {
-            prefix_buf[0] as u16
-        } else {
-            let prefix_hi = ((prefix_buf[1] & 0x3F) as u16) << 8;
-            let prefix_lo = ((prefix_buf[0] << 2) | (prefix_buf[1] >> 6)) as u16;
-            prefix_hi | prefix_lo
-        };
-
-        Ok((prefix, key))
-    }
-}
+use hex;
+use http_body_util::Full;
+use hyper::body::Bytes;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request, Response};
+use hyper_util::rt::TokioIo;
+use std::convert::Infallible;
+use tokio::net::TcpListener;
 
 pub fn key_to_address(prefix: u16, key: &str) -> Result<String, String> {
     let formatted_key = if key.starts_with("0x") {
@@ -89,23 +58,87 @@ pub fn key_to_address(prefix: u16, key: &str) -> Result<String, String> {
         }
     }
 }
+
 #[derive(Parser)] // requires `derive` feature
-#[command(name = "address_convert_name")]
-#[command(bin_name = "base58_converter")]
+#[command(name = "pubkey-to-auto")]
+#[command(bin_name = "pubkey-to-auto")]
 enum ConvertCommand {
-    Convert(ConvertArgs),
+    Convertserver(ServerArgs),
+    Convertcmd(ConvertArgs),
 }
 
 #[derive(clap::Args, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = "Covert a publickey to autonomys address")]
 struct ConvertArgs {
-    #[arg(long,short)]
+    #[arg(long, short)]
     publickey: String,
 }
-
-fn main() {
-    let ConvertCommand::Convert(pk) = ConvertCommand::parse();
-    let s58_addr = key_to_address(2254, &pk.publickey).unwrap();
-   println!("{}",s58_addr);
+#[derive(clap::Args, Debug)]
+#[command(version, about, long_about = "Listen to a port to start a service")]
+struct ServerArgs {
+    #[arg(long, short)]
+    listen: String,
 }
 
+async fn handle_convert(
+    req: Request<hyper::body::Incoming>,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    log::info!("Request uri: {}",req.uri().path());
+    if req.uri().path().contains("/pub/") {
+        let pb = req.uri().path().split("/").last().unwrap();
+        if pb != "" {
+            let auto_result = key_to_address(2254, pb);
+            match auto_result {
+                Ok(autoad) => {
+                    return Ok(Response::new(Full::new(Bytes::from(autoad))));
+                }
+                Err(_) => {
+                    return Ok(Response::new(Full::new(Bytes::from(
+                        "Unavailbe pubkey received, Please check you public key",
+                    ))));
+                }
+            }
+        }
+    } else {
+        return Ok(Response::new(Full::new(Bytes::from(
+            "request to a wrong url",
+        ))));
+    }
+    Ok(Response::new(Full::new(Bytes::from(
+        "public key to autonomys address tool",
+    ))))
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tracing_subscriber::fmt().json().init();
+    match ConvertCommand::parse() {
+        ConvertCommand::Convertserver(serverarg) => {
+            let listener = TcpListener::bind(serverarg.listen).await?;
+
+            // We start a loop to continuously accept incoming connections
+            loop {
+                let (stream, _) = listener.accept().await?;
+                log::info!("client ip: {}",stream.peer_addr().unwrap());
+                // Use an adapter to access something implementing `tokio::io` traits as if they implement
+                // `hyper::rt` IO traits.
+                let io = TokioIo::new(stream);
+                // Spawn a tokio task to serve multiple connections concurrently
+                tokio::task::spawn(async move {
+                 
+                    if let Err(err) = http1::Builder::new()
+                        .serve_connection(io, service_fn(handle_convert))
+                        .await
+                    {
+                        eprintln!("Error serving connection: {:?}", err);
+                    }
+                });
+            }
+        }
+        ConvertCommand::Convertcmd(pk) => {
+            let s58_addr = key_to_address(2254, &pk.publickey).unwrap();
+            println!("{}", s58_addr);
+        }
+    }
+    Ok(())
+}
