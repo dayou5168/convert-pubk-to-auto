@@ -1,4 +1,4 @@
-# A command line tool for converting a public key to atonomys style adreess
+# A command line tool for converting a public key to an autonomys style address
 
 ## Compile
 
@@ -46,4 +46,4 @@ Options:
 
 ## Notice
 
-It's a tool copied and do some tweaks to simplify the convert process. 
+This is a tool to convert public key to autonomys address. use the command line or run a server. simple and easy.
