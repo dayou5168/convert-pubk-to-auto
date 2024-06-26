@@ -44,6 +44,9 @@ Options:
           Print version
 ```
 
+>Service uri is kind of like http://host:port/pub/youpublickey. 
+eg: http://127.0.0.1:4000/pub/0x3ae43b80268a721c781ec6ec2631be705b2e57392aa96b9a37bcc7337a
+
 ## Notice
 
 This is a tool to convert public key to autonomys address. use the command line or run a server. simple and easy.
