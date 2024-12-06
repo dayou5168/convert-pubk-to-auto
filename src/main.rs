@@ -136,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
         ConvertCommand::Convertcmd(pk) => {
-            let s58_addr = key_to_address(2254, &pk.publickey).unwrap();
+            let s58_addr = key_to_address(6094, &pk.publickey).unwrap();
             println!("{}", s58_addr);
         }
     }
